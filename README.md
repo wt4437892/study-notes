@@ -1,4 +1,4 @@
 # Introduction
 
-[Git教程](./docs/git/README.md)
+[Git教程](./docs/Git/README.md)
 
