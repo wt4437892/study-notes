@@ -48,3 +48,9 @@
 
 - `git diff` 查看修改之后未暂存起来的变化内容
 - `git diff --staged(cached)` 查看已暂存的将要添加到下次提交里的内容
+
+## 提交更新
+
+- `git commit` 提交命令
+- `git commit -m` 提交以及提交信息
+- `git commit -a` 自动把所有已经跟踪过的文件暂存起 来一并提交，跳过`git add`步骤
