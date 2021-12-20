@@ -1467,3 +1467,26 @@ sources.addFirst(new MyPropertySource());
 在前面的代码中，MyPropertySource在搜索中以最高优先级添加。如果它包含my-property属性，则会检测并返回该属性，以支持任何其他PropertySource中的任何my-property属性。MutablePropertySources API公开了许多方法，这些方法允许对属性源集进行精确操作。
 
 ### 1.13.3 使用@PropertySource
+
+@PropertySource注释提供了一种方便的声明性机制，用于将PropertySource添加到Spring的环境中。
+
+给定一个名为app.properties的文件。包含键值对testbean.name=myTestBean，下面的@Configuration类使用@PropertySource的方式是调用testBean.getName（）返回myTestBean：
+
+```java
+@Configuration
+@PropertySource("classpath:/com/myco/app.properties")
+public class AppConfig {
+
+    @Autowired
+    Environment env;
+
+    @Bean
+    public TestBean testBean() {
+        TestBean testBean = new TestBean();
+        testBean.setName(env.getProperty("testbean.name"));
+        return testBean;
+    }
+}
+```
+
+任何${…} @PropertySource资源位置中存在的占位符将根据已针对环境注册的属性源集进行解析，如下例所示：
