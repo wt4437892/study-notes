@@ -1441,3 +1441,29 @@ System.out.println("Does my environment contain the 'my-property' property? " + 
 ```
 
 在前面的代码片段中，我们看到了询问Spring是否为当前环境定义了my-property属性的高级方法。为了回答这个问题，环境对象对一组PropertySource对象执行搜索。PropertySource是对任何键值对源的简单抽象，Spring的StandardEnvironment配置了两个PropertySource对象 — 一个表示JVM系统属性集（system.getProperties（）），另一个表示系统环境变量集（system.getenv（））。
+
+> 这些默认属性源用于StandardEnvironment，用于独立应用程序。StandardServleteEnvironment使用其他默认属性源填充，包括servlet配置和servlet上下文参数。它可以选择启用JndiPropertySource。有关详细信息，请参阅javadoc。
+
+具体地说，当您使用StandardEnvironment时，调用env。如果运行时存在my-property系统属性或my-property环境变量，则containsProperty（“my-property”）返回true。
+
+> 执行的搜索是分层的。默认情况下，系统属性优先于环境变量。因此，如果在调用env.getProperty（“my-properties”）期间恰好在两个位置都设置了my-property属性，系统属性值“wins”并返回。请注意，属性值不会合并，而是完全由前面的条目覆盖。
+>
+> 对于通用StandardServletEnvironment，完整的层次结构如下所示，最高优先级的条目位于顶部：
+>
+> 1. ServletConfig参数（如果适用 — 例如，对于DispatcherServlet上下文）
+> 2. ServletContext参数（web.xml上下文参数条目）
+> 3. JNDI环境变量（java:comp/env/entries）
+> 4. JVM系统属性（-D个命令行参数）
+> 5. JVM系统环境（操作系统环境变量）
+
+最重要的是，整个机制是可配置的。也许您有一个自定义的属性源，希望将其集成到此搜索中。为此，实现并实例化您自己的PropertySource，并将其添加到当前环境的PropertySources集合中。以下示例显示了如何执行此操作：
+
+```java
+ConfigurableApplicationContext ctx = new GenericApplicationContext();
+MutablePropertySources sources = ctx.getEnvironment().getPropertySources();
+sources.addFirst(new MyPropertySource());
+```
+
+在前面的代码中，MyPropertySource在搜索中以最高优先级添加。如果它包含my-property属性，则会检测并返回该属性，以支持任何其他PropertySource中的任何my-property属性。MutablePropertySources API公开了许多方法，这些方法允许对属性源集进行精确操作。
+
+### 1.13.3 使用@PropertySource
