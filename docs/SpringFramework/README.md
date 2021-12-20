@@ -1302,3 +1302,142 @@ public class AppConfig {
 
 > 对于@Bean方法上的@Profile，可能会应用一种特殊的场景：对于相同Java方法名称的重载@Bean方法（类似于构造函数重载），需要在所有重载方法上一致地声明@Profile条件。如果条件不一致，则重载方法中只有第一个声明上的条件起作用。因此，@Profile不能用于选择具有特定参数签名的重载方法。同一bean的所有工厂方法之间的解析在创建时遵循Spring的构造函数解析算法。
 > 如果要定义具有不同概要条件的替代bean，请使用@bean name属性使用指向相同bean名称的不同Java方法名称，如前一示例所示。如果参数签名都是相同的（例如，所有变体都没有arg工厂方法），这是在有效Java类中首先表示这种安排的唯一方法（因为只有一个特定名称和参数签名的方法）。
+
+#### XML Bean定义概要文件
+
+XML对应项是\<beans\>元素的profile属性。我们前面的示例配置可以在两个XML文件中重写，如下所示：
+
+```xml
+<beans profile="development"
+    xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+    xsi:schemaLocation="...">
+
+    <jdbc:embedded-database id="dataSource">
+        <jdbc:script location="classpath:com/bank/config/sql/schema.sql"/>
+        <jdbc:script location="classpath:com/bank/config/sql/test-data.sql"/>
+    </jdbc:embedded-database>
+</beans>
+```
+
+```xml
+<beans profile="production"
+    xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:jee="http://www.springframework.org/schema/jee"
+    xsi:schemaLocation="...">
+
+    <jee:jndi-lookup id="dataSource" jndi-name="java:comp/env/jdbc/datasource"/>
+</beans>
+```
+
+也可以避免在同一文件中拆分和嵌套\<beans/\>元素，如下例所示：
+
+```xml
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+    xmlns:jee="http://www.springframework.org/schema/jee"
+    xsi:schemaLocation="...">
+
+    <!-- other bean definitions -->
+
+    <beans profile="development">
+        <jdbc:embedded-database id="dataSource">
+            <jdbc:script location="classpath:com/bank/config/sql/schema.sql"/>
+            <jdbc:script location="classpath:com/bank/config/sql/test-data.sql"/>
+        </jdbc:embedded-database>
+    </beans>
+
+    <beans profile="production">
+        <jee:jndi-lookup id="dataSource" jndi-name="java:comp/env/jdbc/datasource"/>
+    </beans>
+</beans>
+```
+
+spring-bean.xsd 已被约束为仅允许作为文件中最后一个元素的元素。这将有助于提供灵活性，而不会导致XML文件混乱。
+
+> XML对应项不支持前面描述的配置文件表达式。但是，可以使用！操作人员也可以通过嵌套配置文件应用逻辑“和”，如下例所示：
+>
+> ```xml
+> <beans xmlns="http://www.springframework.org/schema/beans"
+>     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+>     xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+>     xmlns:jee="http://www.springframework.org/schema/jee"
+>     xsi:schemaLocation="...">
+> 
+>     <!-- other bean definitions -->
+> 
+>     <beans profile="production">
+>         <beans profile="us-east">
+>             <jee:jndi-lookup id="dataSource" jndi-name="java:comp/env/jdbc/datasource"/>
+>         </beans>
+>     </beans>
+> </beans>
+> ```
+>
+> 在前面的示例中，如果production和useast概要文件都处于活动状态，那么数据源bean将被公开。
+
+#### 激活配置文件
+
+现在我们已经更新了配置，我们仍然需要指示Spring哪个配置文件是活动的。如果我们现在启动示例应用程序，我们将看到抛出NoSuchBeanDefinitionException，因为容器找不到名为dataSource的Spring bean。
+
+激活概要文件可以通过多种方式完成，但最简单的方法是通过ApplicationContext提供的环境API以编程方式完成。以下示例显示了如何执行此操作：
+
+```java
+AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+ctx.getEnvironment().setActiveProfiles("development");
+ctx.register(SomeConfig.class, StandaloneDataConfig.class, JndiDataConfig.class);
+ctx.refresh();
+```
+
+此外，还可以通过spring.profiles.active属性声明性地激活概述，可以通过系统环境变量、JVM系统属性、web.xml中的servlet上下文参数指定，甚至作为JNDI中的条目（请参阅PropertySource抽象）。在集成测试中，可以通过使用spring测试模块中的@ActiveProfiles注释来声明活动概要文件（请参阅环境概要文件的上下文配置）。
+
+请注意，配置文件不是“非此即彼”的命题。您可以一次激活多个配置文件。通过编程，您可以为setActiveProfiles（）方法提供多个配置文件名称，该方法接受String… 可变参数。以下示例激活多个配置文件：
+
+```java
+ctx.getEnvironment().setActiveProfiles("profile1", "profile2");
+```
+
+声明性地说，spring.profiles.active可接受以逗号分隔的配置文件名称列表，如下例所示：
+
+```sh
+-Dspring.profiles.active="profile1,profile2"
+```
+
+#### 缺省概述
+
+默认配置文件表示默认启用的配置文件。考虑下面的例子：
+
+```java
+@Configuration
+@Profile("default")
+public class DefaultDataConfig {
+
+    @Bean
+    public DataSource dataSource() {
+        return new EmbeddedDatabaseBuilder()
+            .setType(EmbeddedDatabaseType.HSQL)
+            .addScript("classpath:com/bank/config/sql/schema.sql")
+            .build();
+    }
+}
+```
+
+如果没有激活的配置文件，则创建datasource。您可以将此视为为为一个或多个bean提供默认定义的一种方式。如果启用了任何配置文件，则默认配置文件不适用。
+
+您可以在环境中使用setDefaultProfiles（）更改默认配置文件的名称，或者以声明方式使用spring.profiles.default属性。
+
+### 1.13.2 PropertySource抽象
+
+Spring的环境抽象在可配置的属性源层次结构上提供搜索操作。考虑下面的列表：
+
+```java
+ApplicationContext ctx = new GenericApplicationContext();
+Environment env = ctx.getEnvironment();
+boolean containsMyProperty = env.containsProperty("my-property");
+System.out.println("Does my environment contain the 'my-property' property? " + containsMyProperty);
+```
+
+在前面的代码片段中，我们看到了询问Spring是否为当前环境定义了my-property属性的高级方法。为了回答这个问题，环境对象对一组PropertySource对象执行搜索。PropertySource是对任何键值对源的简单抽象，Spring的StandardEnvironment配置了两个PropertySource对象 — 一个表示JVM系统属性集（system.getProperties（）），另一个表示系统环境变量集（system.getenv（））。
