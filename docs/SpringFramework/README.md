@@ -1981,3 +1981,21 @@ scanPackages.end();
 
 侦听器检查contextConfigLocation参数。如果参数不存在，默认情况下侦听器将使用/WEB-INF/applicationContext.xml。当参数确实存在时，侦听器使用预定义的分隔符（逗号、分号和空格）分隔字符串，并使用这些值作为搜索应用程序上下文的位置。也支持Ant样式的路径模式。例如/WEB-INF/\*Context.xml（用于名称以Context.xml结尾且位于WEB-INF目录中的所有文件）和/WEB-INF/\*\*/\*Context.xml（用于WEB-INF任何子目录中的所有此类文件）。
 
+### 1.15.6 将Spring ApplicationContext部署为Java EE RAR文件
+
+可以将Spring ApplicationContext部署为RAR文件，将上下文及其所有必需的bean类和库JAR封装在Java EE RAR部署单元中。这相当于引导一个独立的ApplicationContext（仅托管在JavaEE环境中）来访问JavaEE服务器设施。RAR部署是部署无头WAR文件的更自然的替代方案 — 实际上，一个没有任何HTTP入口点的WAR文件，仅用于在JavaEE环境中引导Spring ApplicationContext。
+
+RAR部署非常适合于不需要HTTP入口点，而只包含消息端点和计划作业的应用程序上下文。这种上下文中的bean可以使用应用服务器资源，例如JTA事务管理器和JNDI绑定的JDBC数据源实例和JMS连接工厂实例，还可以向平台的JMX服务器注册 — 通过Spring的标准事务管理以及JNDI和JMX支持设施。应用程序组件还可以通过Spring的TaskExecutor抽象与应用服务器的JCA WorkManager交互。
+
+有关RAR部署中涉及的配置详细信息，请参阅SpringContextResourceAdapter类的javadoc。
+
+要将Spring ApplicationContext作为Java EE RAR文件进行简单部署，请执行以下操作：
+
+1. 将所有应用程序类打包到一个RAR文件中（这是一个具有不同文件扩展名的标准JAR文件）。
+2. 将所有必需的库jar添加到RAR归档的根目录中。
+3. 添加META-INF/ra.xml部署描述符（如javadoc for SpringContextResourceAdapter中所示）和相应的SpringXMLBean定义文件（通常为META-INF/applicationContext.xml）。
+4. 将生成的RAR文件放到应用程序服务器的部署目录中。
+
+> 这种RAR部署单元通常是独立的。它们不向外界公开组件，甚至不向同一应用程序的其他模块公开组件。与基于RAR的ApplicationContext的交互通常通过与其他模块共享的JMS目的地进行。例如，基于RAR的ApplicationContext还可以调度一些作业或对文件系统中的新文件（或类似文件）作出反应。如果它需要允许从外部进行同步访问，它可以（例如）导出RMI端点，同一台机器上的其他应用程序模块可能会使用这些端点。
+
+## 1.16 Bean Factory
