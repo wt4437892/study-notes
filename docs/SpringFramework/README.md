@@ -2058,3 +2058,180 @@ cfg.postProcessBeanFactory(factory);
 在这两种情况下，显式注册步骤都不方便，这就是为什么在Spring支持的应用程序中，各种ApplicationContext变体比普通的DefaultListableBeanFactory更受欢迎的原因，特别是在典型的企业设置中，依赖BeanFactoryPostProcessor和BeanPostProcessor实例实现扩展容器功能时。
 
 > AnnotationConfigApplicationContext注册了所有常见的批注后处理器，并且可以通过配置批注（如@EnableTransactionManagement）在封面下引入其他处理器。在Spring基于注释的配置模型的抽象级别上，bean后处理器的概念仅仅成为一个内部容器细节。
+
+# 2. 资源
+
+本章介绍Spring如何处理资源以及如何在Spring中使用资源。
+
+## 2.1 介绍
+
+不幸的是，Java的标准`java.net.URL`类和各种URL前缀的标准处理程序不足以让所有人都获得低级别的资源。例如，没有标准化的URL实现可用于访问需要从类路径或相对于ServletContext获取的资源。虽然可以为专门的URL前缀注册新的处理程序（类似于http:等前缀的现有处理程序），但这通常相当复杂，并且URL接口仍然缺少一些需要的功能，例如检查指向的资源是否存在的方法。
+
+## 2.2 Resource接口
+
+`Spring`的位于`org.springframework.core.io.`包中的`Resource`接口是一个更强大的接口，用于抽象对低级资源的访问。下面的列表提供了`Resource`接口的概述。有关更多详细信息，请参阅资源javadoc。
+
+```java
+public interface Resource extends InputStreamSource {
+
+    boolean exists();
+
+    boolean isReadable();
+
+    boolean isOpen();
+
+    boolean isFile();
+
+    URL getURL() throws IOException;
+
+    URI getURI() throws IOException;
+
+    File getFile() throws IOException;
+
+    ReadableByteChannel readableChannel() throws IOException;
+
+    long contentLength() throws IOException;
+
+    long lastModified() throws IOException;
+
+    Resource createRelative(String relativePath) throws IOException;
+
+    String getFilename();
+
+    String getDescription();
+}
+```
+
+如`Resource`接口的定义所示，它扩展了`InputStreamSource`接口。以下列表显示`InputStreamSource`接口的定义：
+
+```java
+public interface InputStreamSource {
+
+    InputStream getInputStream() throws IOException;
+}
+```
+
+资源接口中一些最重要的方法包括：
+
+- `getInputStream()`: 查找并打开资源，返回InputStream以从资源中读取。每个调用都会返回一个新的InputStream。调用方负责关闭流。
+- `exist()`: 返回一个`boolean`值，指示此资源是否实际以物理形式存在。
+- `isOpen()`: 返回一个`boolean`值，指示此资源是否表示具有开放流的处理。如果为true，则不能多次读取InputStream，必须只读取一次，然后关闭以避免资源泄漏。对于所有常见的资源实现返回false，InputStreamResource除外。
+- `getDescription()`: 返回此资源的说明，用于处理资源时的错误输出。这通常是资源的完全限定文件名或实际URL。
+
+其他方法允许您获取表示资源的实际URL或文件对象（如果底层实现兼容并支持该功能）。
+
+`Resource`接口的一些实现还为支持写入的资源实现扩展的`WritableResource`接口。
+
+Spring本身广泛使用资源抽象，当需要资源时，它在许多方法签名中作为参数类型。某些Spring API中的其他方法（如各种`ApplicationContext`实现的构造函数）采用一个`String`，该字符串以未经修饰或简单的形式用于创建适合该上下文实现的资源，或者通过`String`路径上的特殊前缀，让调用方指定必须创建和使用特定的资源实现。
+
+虽然资源接口在Spring和被Spring大量使用，但实际上，它在您自己的代码中作为一个通用实用程序类使用非常方便，以便访问资源，即使您的代码不知道或不关心Spring的任何其他部分。虽然这将您的代码耦合到Spring，但实际上它只将代码耦合到这一小部分实用程序类，这些实用程序类可以作为URL的更强大的替代品，并且可以被视为等同于用于此目的的任何其他库。
+
+`Resource`抽象并不能取代功能。它尽可能地把它包起来。例如，一个URL资源包装一个URL并使用包装后的URL来完成它的工作。
+
+## 2.3 内置Resource实现
+
+### 2.3.1 UrlResource
+
+`UrlResource`封装`java.net.URL`和可用于访问通常可通过URL访问的任何对象例如：文件，Https目标，FTP目标和其他。所有URL都有一个标准化的`String`表示形式，因此使用适当的标准化前缀来表示不同的URL类型。这包括file：用于访问文件系统路径，https：用于通过https协议访问资源，ftp：用于通过ftp访问资源，以及其他。
+
+`UrlResource`由Java代码显式使用`UrlResource`构造函数创建，但通常在调用API方法时隐式创建，该方法采用表示路径的`String`参数。对于后一种情况，JavaBeans属性编辑器最终决定创建哪种类型的资源。如果路径字符串包含一个众所周知的（对于属性编辑器，即）前缀（例如classpath:），它将为该前缀创建一个适当的专用资源。但是，如果它不识别前缀，则会假定该字符串是标准URL字符串，并创建一个`UrlResource`。
+
+### 2.3.2 ClassPathResource
+
+此类表示应从类路径获取的资源。它使用线程上下文类加载器、给定类加载器或给定类来加载资源。
+
+此`Resource`实现支持作为`java.io.File`的决议。如果类路径资源驻留在文件系统中，而不是驻留在jar中且未（通过servlet引擎或任何环境）扩展到文件系统的类路径资源，则为File。为了解决这个问题，各种资源实现始终支持作为`java.net.URL`解析。
+
+`ClassPathResource`是由Java代码通过显式使用`ClassPathResource`构造函数创建的，但通常在调用API方法时隐式创建，该方法采用表示路径的字符串参数。对于后一种情况，JavaBeans属性编辑器识别字符串路径上的特殊前缀classpath:，并在这种情况下创建ClassPathResource。
+
+### 2.3.3 FileSystemResource
+
+这是一个`Resource`对于`java.io.File`实现。它也支持`java.nio.file.path`实现,应用Spring标准的基于字符串的路径转换，但通过`java.nioi.file.Files`执行所有操作。对于纯`java.nio.path.Path`基础支持时改用PathResource。FileSystemResource支持解析为`File`和`URL`。
+
+### 2.3.4 PathResource
+
+这是一个对于`java.nio.file.Path`处理,通过`Path`API执行所有操作和转换的`Resource`实现。它支持解析为文件和URL，还实现了扩展的`WritableResource`接口。`PathResource`实际上是一个纯`java.nio.path.Path`具有不同`createRelative`行为的`FileSystemResource`的基于路径的替代方案。
+
+### 2.3.5 ServletContextResource
+
+这是用于解释相关web应用程序根目录中的相对路径的ServletContext资源的`Resource`实现。
+
+它始终支持流访问和URL访问，但允许仅当web应用程序存档已扩展且资源物理上位于文件系统上时`java.io.File`才能访问文件。它是否被扩展并放在文件系统上，或者直接从JAR或其他地方（比如数据库）访问（这是可以想象的），实际上取决于Servlet容器。
+
+### 2.3.6 InputStreamResource
+
+`InputStreamResource`是给定`InputStream`的资源实现。只有在没有特定的资源实现适用时才应使用它。特别是，在可能的情况下，首选`ByteArrayResource`或任何基于文件的资源实现。
+与其他资源实现不同，这是已打开资源的描述符。因此，它从isOpen（）返回true。如果需要将资源描述符保留在某个位置，或者需要多次读取流，请不要使用它。
+
+### 2.3.7 ByteArrayResource
+
+这是给定字节数组的资源实现。它为给定字节数组创建ByteArrayInputStream。
+它有助于从任何给定字节数组加载内容，而不必求助于一次性InputStreamResource。
+
+## 2.4 ResourceLoader 接口
+
+ResourceLoader接口是由可以返回（即加载）资源实例的对象实现的。以下列表显示了ResourceLoader接口定义：
+
+```java
+public interface ResourceLoader {
+
+    Resource getResource(String location);
+
+    ClassLoader getClassLoader();
+}
+```
+
+所有应用程序上下文都实现ResourceLoader接口。因此，可以使用所有应用程序上下文来获取资源实例。
+在特定应用程序上下文上调用getResource（）时，如果指定的位置路径没有特定前缀，则会返回适合该特定应用程序上下文的资源类型。例如，假设以下代码片段是针对ClassPathXmlApplicationContext实例运行的：
+
+```java
+Resource template = ctx.getResource("some/resource/path/myTemplate.txt");
+```
+
+针对ClassPathXmlApplicationContext，该代码返回ClassPathResource。如果对FileSystemXmlApplicationContext实例运行相同的方法，它将返回FileSystemResource。对于WebApplicationContext，它将返回ServletContextResource。它同样会为每个上下文返回适当的对象。
+因此，您可以按照适合特定应用程序上下文的方式加载资源。
+另一方面，您也可以通过指定特殊的classpath:前缀，强制使用ClassPathResource，而不管应用程序上下文类型如何，如下例所示：
+
+```java
+Resource template = ctx.getResource("classpath:some/resource/path/myTemplate.txt");
+```
+
+类似地，您可以通过指定任何标准`java.net.URL`前缀来强制使用UrlResource。以下示例使用file和https前缀：
+
+```java
+Resource template = ctx.getResource("file:///some/resource/path/myTemplate.txt");
+```
+
+```java
+Resource template = ctx.getResource("https://myhost.com/resource/path/myTemplate.txt");
+```
+
+下表总结了将`String`对象转换为`Resource`对象的策略：
+
+| 前缀       | 例子                           | 解释                                            |
+| ---------- | ------------------------------ | ----------------------------------------------- |
+| classpath: | classpath:com/myapp/config.xml | 从类路径加载。                                  |
+| file:      | file:///data/config.xml        | 从文件系统加载为URL。另请参见文件系统资源警告。 |
+| https:     | https://myserver/logo.png      | 作为URL加载。                                   |
+| (none)     | /data/config.xml               | 取决于基础应用程序上下文。                      |
+
+## 2.5 ResourcePatternResolver 接口
+
+ResourcePatternResolver接口是ResourceLoader接口的扩展，它定义了将位置模式（例如，Ant样式的路径模式）解析为资源对象的策略。
+
+```java
+public interface ResourcePatternResolver extends ResourceLoader {
+
+    String CLASSPATH_ALL_URL_PREFIX = "classpath*:";
+
+    Resource[] getResources(String locationPattern) throws IOException;
+}
+```
+
+如上所述，该接口还为类路径中的所有匹配资源定义了一个特殊的classpath\*：资源前缀。请注意，在这种情况下，资源位置应该是没有占位符的路径 — 例如，classpath\*：/config/bean.xml。JAR文件或类路径中的不同目录可以包含具有相同路径和相同名称的多个文件。有关使用classpath*：资源前缀支持通配符的更多详细信息，请参阅应用程序上下文构造函数资源路径及其子部分中的通配符。
+
+可以检查传入的ResourceLoader（例如，通过ResourceLoaderAWare语义提供的ResourceLoader）是否也实现了此扩展接口。
+
+`PathMatchingResourcePatternResolver`是一个独立的实现，可在`ApplicationContext`外部使用，ResourceArrayPropertyEditor也可用于填充`Resource[]bean`属性。`PathMatchingResourcePatternResolver`能够将指定的资源位置路径解析为一个或多个匹配的资源对象。源路径可以是一个简单的路径，该路径具有到目标资源的一对一映射，或者可以包含特殊的classpath*：前缀和/或内部Ant样式的正则表达式（使用Spring的`org.springframework.util.AntPathMatcher`实用程序进行匹配）。后者两者实际上都是通配符
+
+> 任何标准ApplicationContext中的默认ResourceLoader实际上是实现ResourcePatternResolver接口的PathMatchingResourcePatternResolver的实例。ApplicationContext实例本身也是如此，它还实现了ResourcePatternResolver接口并委托给默认的PathMatchingResourcePatternResolver。
